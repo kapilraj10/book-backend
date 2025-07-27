@@ -5,71 +5,53 @@ const Order = require("../models/order");
 const User = require("../models/user");
 
 //place order
-router.post("/place-order", authenticateToken, async (req, res ) => {
-    try{
-        const {id} = req.headers;
-        const {order} = req.body;
+router.post("/place-order", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.headers;
+    const { order } = req.body;
 
-        for (const orderData of order) {
-            const newOrder = new Order({ user: id, book: orderData._id});
-            const orderDataFromDb = await newOrder.save();
+    for (const orderData of order) {
+      // Save new order
+      const newOrder = new Order({ user: id, book: orderData._id });
+      const orderDataFromDb = await newOrder.save();
 
-            //saving Order inthe user model 
-            await User.findByIdAndUpadate(id, {
-                $push : {orders:  orderDataFromDb._id},
-            });
-            // clering cart
-            await User.findByIdAndUpadate(id, {
-                $pull: {cart: orderData._id},
-            });
-        }
-        return res.json({ status: "Success", message:"Order Placed Successfully",});
-    } catch (error){
-        consloe.log(error);
-        return res.status(500).json({message: "An error ocurred"});
+      // Update user: add order ID and remove item from cart in one update call
+      await User.findByIdAndUpdate(id, {
+        $push: { orders: orderDataFromDb._id },
+        $pull: { cart: orderData._id },
+      });
     }
-})
+
+    return res.json({ status: "Success", message: "Order Placed Successfully" });
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({ message: "An error occurred" });
+  }
+});
 
 //get order  history of particuler user 
-router.get("/get-order-history", authenticateToken, async (req, res) => {
-    try {
-        const { id } = req.headers;
-        const userData = await User.findById(id).populate({
-            path: "orders",
-            populate: { path: "book" },
-        });
+router.get("/api/v1/get-order-history", authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
 
-        if (!userData) {
-            return res.status(404).json({ message: "User not found" });
-        }
+    const userData = await User.findById(userId).populate({
+      path: 'orders',
+      populate: { path: 'book' }
+    });
 
-        const ordersData = userData.orders?.reverse() || [];
-        return res.json({
-            status: "Success",
-            data: ordersData,
-        });
-    } catch (error) {
-        console.log(error);
-        return res.status(500).json({ message: "Internal server error" });
+    if (!userData) {
+      return res.status(404).json({ success: false, message: 'User not found' });
     }
+
+    const ordersData = userData.orders?.reverse() || [];
+
+    return res.json({ success: true, data: ordersData });
+  } catch (error) {
+    console.error('Order history fetch error:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error' });
+  }
 });
 //get all order --- admin 
-router.get("/get-all-orders", authenticateToken, async (req, res ) => {
-    try{
-        const userData = await Order.find()
-        .populate({
-            path: "book",
-        })
-        .sort({ createdAt: -1 });
-        return  res.json({
-            status: "Success",
-            data:"userData",
-        });
-    } catch (error){
-        console.log(error)
-        return res.status(500).json({message:" An error occurred"});
-    }
-});
 
 // update  order -- admin 
 router.put("/update-status/:id", authenticateToken, async (req, res) => {
